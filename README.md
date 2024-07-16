@@ -14,7 +14,7 @@ AsyncCSVXpert is a web application that allows users to upload CSV files, proces
 - [Usage](#usage)
 
 ## Demo
-[![Video](assets/demo.jpg)](assets/demo.mp4)
+[![Video](assets/demo.png)](assets/demo.mp4)
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
