@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { usePapaParse } from 'react-papaparse';
 import './App.css';
 import { CSVLink } from 'react-csv';
@@ -12,10 +12,16 @@ function App() {
   const [csvData, setCsvData] = useState(null);
   const [results, setResults] = useState([]);
   const [progress, setProgress] = useState(0);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalRecordsProcessed, setTotalRecordsProcessed] = useState(0);
+  const [successCount, setSuccessCount] = useState(0);
+  const [unsuccessCount, setUnsuccessCount] = useState(0);
   const [showProgress, setShowProgress] = useState(false);
   const [showCharts, setShowCharts] = useState(false);
   const [validationMessage, setValidationMessage] = useState('');
   const fileInputRef = useRef(null);
+  const [fileName, setFileName] = useState('default_results.csv');
+  const [processing, setProcessing] = useState(false);
 
   const handleFileDrop = (e) => {
     e.preventDefault();
@@ -40,6 +46,8 @@ function App() {
 
     const reader = new FileReader();
     reader.onload = (event) => {
+      const fileName = file.name;
+      setFileName(`results_${fileName}`);
       readString(event.target.result, {
         header: true,
         complete: (result) => {
@@ -78,14 +86,14 @@ function App() {
 
           const formattedData = validData.map((row) => ({
             id: row[Object.keys(row)[0]],
-            URL: row[Object.keys(row)[1]],
+            url: row[Object.keys(row)[1]], // Update to match backend structure
           }));
 
           setCsvData(formattedData);
           setShowProgress(false);
           setShowCharts(false);
           setValidationMessage(
-            `CSV file uploaded and validated successfully. Removed ${nullRecordsCount} null records, ${duplicateRecordsCount} duplicate records. Total valid records: ${formattedData.length}`
+            `CSV file '${fileName}' uploaded and validated successfully. Removed ${nullRecordsCount} null records, ${duplicateRecordsCount} duplicate records. Total valid records: ${formattedData.length}`
           );
         },
       });
@@ -98,52 +106,110 @@ function App() {
       alert('Please upload a CSV file before processing.');
       return;
     }
-    
+    setProcessing(true);
     // Send data to API
-    fetch('http://localhost:8080/process-csv', {
+    fetch('http://localhost:8080/process', { // Update endpoint URL
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(csvData),
     })
-    .then(response => response.json())
-    .then(data => {
-      if (data.status === 'ok') {
+      .then(response => {
+        if (!response.ok) {
+          throw new Error('Network response was not ok');
+        }
+  
+        // Process the streaming data
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+  
+        let totalRecordsProcessedLocal = 0;
+        let successCountLocal = 0;
+        let unsuccessCountLocal = 0;
+        const resultsLocal = [];
+  
+        const readStream = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) {
+                console.log('Stream complete');
+                break;
+              }
+  
+              const chunk = decoder.decode(value, { stream: true });
+  
+              // Split the chunk by newline to handle multiple JSON objects
+              const updates = chunk.split('\n').filter(line => line.trim() !== '');
+  
+              updates.forEach(update => {
+                try {
+                  // If the update contains multiple JSON objects, split them
+                  const jsonObjects = update.split('}{').map((jsonStr, index, array) => {
+                    if (array.length > 1) {
+                      if (index === 0) {
+                        return jsonStr + '}';
+                      } else if (index === array.length - 1) {
+                        return '{' + jsonStr;
+                      } else {
+                        return '{' + jsonStr + '}';
+                      }
+                    }
+                    return jsonStr;
+                  });
+  
+                  jsonObjects.forEach(jsonStr => {
+                    const parsedUpdate = JSON.parse(jsonStr);
+                    console.log('Received update:', parsedUpdate);
+  
+                    totalRecordsProcessedLocal++;
+                    if (parsedUpdate.result.response_code === 200) {
+                      successCountLocal++;
+                    } else {
+                      unsuccessCountLocal++;
+                    }
+  
+                    resultsLocal.push(parsedUpdate);
+  
+                    setProgress((totalRecordsProcessedLocal / parsedUpdate.total_records) * 100);
+                    setTotalRecords(parsedUpdate.total_records);
+                    setSuccessCount(successCountLocal);
+                    setUnsuccessCount(unsuccessCountLocal);
+                    setResults(resultsLocal);
+                    setTotalRecordsProcessed(totalRecordsProcessedLocal);
+                  });
+                } catch (error) {
+                  console.error('Error parsing update:', error);
+                  console.log('Update content:', update); // Log the problematic update
+                }
+              });
+            }
+          } catch (error) {
+            console.error('Stream read error:', error);
+          }
+          finally {
+            setProcessing(false); // Show the process button again when processing completes
+          }
+        };
+  
+        readStream().catch(error => {
+          console.error('Stream error:', error);
+        });
+  
         setShowCharts(true);
         setShowProgress(true);
-        getRealTimeUpdates();
-      } else {
-        alert('Error processing CSV data');
-      }
-    })
-    .catch(error => {
-      console.error('Error:', error);
-      alert('Error processing CSV data');
-    });
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('Error processing CSV data, make sure API is running..');
+        setProcessing(false);
+      });
   };
-
-  const getRealTimeUpdates = () => {
-    const interval = setInterval(() => {
-      fetch('http://localhost:8080/progress')
-        .then(response => response.json())
-        .then(data => {
-          setProgress(data.progress);
-          setResults(data.results);
-          if (data.progress >= 100) {
-            clearInterval(interval);
-            setShowProgress(false);
-          }
-        })
-        .catch(error => {
-          console.error('Error:', error);
-          clearInterval(interval);
-        });
-    }, 1000);
-  };
+  
 
   const responseCodeCounts = results.reduce((acc, result) => {
-    acc[result.responseCode] = (acc[result.responseCode] || 0) + 1;
+    acc[result.result.response_code] = (acc[result.result.response_code] || 0) + 1; // Adjust for the backend response structure
     return acc;
   }, {});
 
@@ -172,6 +238,10 @@ function App() {
     ],
   };
 
+  const csvDownloadData = results.map(result => result.result); // Extract only the key-value pairs from parsedUpdate.result
+// Inside your component
+let buttonClass = 'button-default';
+
   return (
     <div className="App">
       <header className="App-header">
@@ -192,14 +262,23 @@ function App() {
           />
         </div>
         {validationMessage && <p className="validation-message">{validationMessage}</p>}
+        <button className="process-button" onClick={handleProcess} disabled={processing}>
+            {processing ? 'Processing...' : 'Process CSV'}
+        </button>
         {showProgress && (
           <div className="progress-bar">
             <div className="progress" style={{ width: `${progress}%` }}></div>
+            <p>
+              <span className="progress-text">{progress.toFixed(2)}% Processed: {totalRecordsProcessed} / {totalRecords}</span>
+              {' '}
+              <span className="success-text">Success: {successCount}</span>
+              {' '}
+              <span className="fail-text">Unsuccessful: {unsuccessCount}</span>
+            </p>
+
           </div>
         )}
-        <button onClick={handleProcess} className="process-button">
-          Process
-        </button>
+                 
         {showCharts && (
           <div className="charts">
             <Pie
@@ -210,11 +289,13 @@ function App() {
             />
           </div>
         )}
-        {results.length > 0 && showCharts && (
-          <CSVLink data={results} filename="results.csv" className="App-link">
-            Download Results
-          </CSVLink>
-        )}
+       <div>
+    {results.length > 0 && (
+      <CSVLink data={csvDownloadData} filename={fileName} className="download-link">
+        <button className={`download-button ${buttonClass}`}>Download Results</button>
+      </CSVLink>
+    )}
+  </div>
       </header>
     </div>
   );
