@@ -5,6 +5,7 @@ AsyncCSVXpert is a web application that allows users to upload CSV files, proces
 ## Table of Contents
 - [Prerequisites](#prerequisites)
 - [Setup](#setup)
+- [Demo](#demo)
 - [Building the Backend](#building-the-backend)
 - [Running the Backend](#running-the-backend)
 - [Configuration](#configuration)
@@ -12,7 +13,8 @@ AsyncCSVXpert is a web application that allows users to upload CSV files, proces
 - [Running the Frontend](#running-the-frontend)
 - [Usage](#usage)
 
-
+## Demo
+[![Video](assets/demo.jpg)](assets/demo.mp4)
 ## Prerequisites
 
 Before you begin, ensure you have the following installed:
