@@ -7,6 +7,7 @@ AsyncCSVXpert is a web application that allows users to upload CSV files, proces
 - [Setup](#setup)
 - [Building the Backend](#building-the-backend)
 - [Running the Backend](#running-the-backend)
+- [Configuration](#configuration)
 - [Building the Frontend](#building-the-frontend)
 - [Running the Frontend](#running-the-frontend)
 - [Usage](#usage)
@@ -52,6 +53,9 @@ cargo run
 ```
 The backend server will start, typically on http://localhost:8080.
 
+## Configuration
+- To change the number of threads used by the Rust backend, modify the value in the .env file inside the csv_processor directory. Default is 20.
+
 ## Building the Frontend
 To build the React frontend, navigate to the csv-processor-frontend directory and run:
 
@@ -67,6 +71,7 @@ To run the React frontend in development mode, execute:
 npm start
 ```
 The frontend will start, typically on http://localhost:3000.
+
 
 ## Usage
 - Open your web browser and navigate to http://localhost:3000.
