@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+    frontend:
+        build:
+            context: ./csv-processor-frontend
+            dockerfile: Dockerfile
+        ports:
+            - "3000:3000"
+        environment:
+            - REACT_APP_BACKEND_URL=http://backend:8080
+        command: ["npm", "start"]
+
+    backend:
+        build:
+            context: ./csv_processor
+            dockerfile: Dockerfile
+        ports:
+            - "8080:8080"
+        command: ["/app/target/release/csv_processor"]
